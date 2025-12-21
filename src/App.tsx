@@ -1,33 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
 
-interface User {
-  name: string;
-  klass: string;
-  nickname: string;
-  bio: string;
-  avatar: string;
-  isFounder: boolean;
-}
+const firebaseConfig = {
+  apiKey: "AIzaSyAXU1vrMR4fovnV04v91kEyklD0fM4JeFw",
+  authDomain: "ushinskiy-live.firebaseapp.com",
+  projectId: "ushinskiy-live",
+  storageBucket: "ushinskiy-live.firebasestorage.app",
+  messagingSenderId: "690668800256",
+  appId: "1:690668800256:web:e52009016a9a925adbcbe5"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [name, setName] = useState('');
   const [klass, setKlass] = useState('');
   const [nickname, setNickname] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('https://api.dicebear.com/7.x/avataaars/svg?seed=default');
-  const [tab, setTab] = useState('home');
-  const [messages, setMessages] = useState<string[]>([]);
+  const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [stories, setStories] = useState<string[]>([]);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const q = query(collection(db, 'messages'), orderBy('timestamp'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => doc.data());
+      setMessages(msgs);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAvatarChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        if (event.target?.result) {
-          setAvatar(event.target.result as string);
-        }
+        setAvatar(event.target.result);
       };
       reader.readAsDataURL(e.target.files[0]);
     }
@@ -44,22 +54,17 @@ function App() {
         avatar,
         isFounder
       });
-      setStories(['Привет от Основателя!']);
     }
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (newMessage.trim() && currentUser) {
       const userTag = currentUser.nickname + (currentUser.isFounder ? ' 👑' : '');
-      setMessages([...messages, userTag + ': ' + newMessage]);
+      await addDoc(collection(db, 'messages'), {
+        text: userTag + ': ' + newMessage,
+        timestamp: new Date()
+      });
       setNewMessage('');
-    }
-  };
-
-  const addStory = () => {
-    const text = prompt('Текст сторис');
-    if (text) {
-      setStories([...stories, text]);
     }
   };
 
@@ -76,29 +81,20 @@ function App() {
         alignItems: 'center',
         fontFamily: 'Arial'
       }}>
-        <h1 style={{ fontSize: '5rem', color: '#00d4ff', textShadow: '0 0 20px #00d4ff' }}>
-          Ushinisky Live
-        </h1>
-        <p style={{ fontSize: '2rem', margin: '20px 0 40px' }}>
-          Школьный мессенджер Куляба
-        </p>
-        
-        <input placeholder="Имя (Умар)" value={name} onChange={(e) => setName(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', border: '2px solid #00d4ff', background: '#1a1a2e', color: 'white', fontSize: '1.4rem' }} />
-        <input placeholder="Класс (10А)" value={klass} onChange={(e) => setKlass(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', border: '2px solid #00d4ff', background: '#1a1a2e', color: 'white', fontSize: '1.4rem' }} />
-        <input placeholder="Никнейм (@umarrrr.ul)" value={nickname} onChange={(e) => setNickname(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', border: '2px solid #00d4ff', background: '#1a1a2e', color: 'white', fontSize: '1.4rem' }} />
-        <input placeholder="Био (о себе)" value={bio} onChange={(e) => setBio(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', border: '2px solid #00d4ff', background: '#1a1a2e', color: 'white', fontSize: '1.4rem' }} />
+        <h1 style={{ fontSize: '5rem', color: '#00d4ff' }}>Ushinisky Live</h1>
+        <input placeholder="Имя (Умар)" value={name} onChange={(e) => setName(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', background: '#1a1a2e', border: 'none', color: 'white' }} />
+        <input placeholder="Класс (10А)" value={klass} onChange={(e) => setKlass(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', background: '#1a1a2e', border: 'none', color: 'white' }} />
+        <input placeholder="Никнейм (@umarrrr.ul)" value={nickname} onChange={(e) => setNickname(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', background: '#1a1a2e', border: 'none', color: 'white' }} />
+        <input placeholder="Био (о себе)" value={bio} onChange={(e) => setBio(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', background: '#1a1a2e', border: 'none', color: 'white' }} />
         
         <div style={{ margin: '30px 0' }}>
-          <label style={{ cursor: 'pointer', padding: '15px 40px', background: '#00d4ff', borderRadius: '20px', fontSize: '1.4rem' }}>
+          <label style={{ cursor: 'pointer', padding: '15px 40px', background: '#00d4ff', borderRadius: '20px' }}>
             Загрузить аватарку
             <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
           </label>
-          {avatar && avatar !== 'https://api.dicebear.com/7.x/avataaars/svg?seed=default' && (
-            <img src={avatar} alt="avatar" style={{ width: '120px', height: '120px', borderRadius: '50%', marginTop: '20px', border: '5px solid #00d4ff' }} />
-          )}
         </div>
         
-        <button onClick={login} style={{ padding: '25px 100px', background: '#00d4ff', color: 'black', border: 'none', borderRadius: '30px', fontSize: '1.8rem', fontWeight: 'bold' }}>
+        <button onClick={login} style={{ padding: '25px 100px', background: '#00d4ff', color: 'black', border: 'none', borderRadius: '30px' }}>
           Войти как Основатель
         </button>
       </div>
@@ -115,94 +111,40 @@ function App() {
       flexDirection: 'column',
       fontFamily: 'Arial'
     }}>
-      {tab === 'home' && (
-        <div style={{ flex: 1 }}>
-          <div style={{ padding: '20px', background: '#1a1a2e', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-            <h3>Сторис</h3>
-            <div style={{ display: 'inline-flex' }}>
-              <div style={{ textAlign: 'center', marginRight: '20px', cursor: 'pointer' }} onClick={addStory}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#333', border: '3px dashed #00d4ff', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '2rem' }}>
-                  +
-                </div>
-                <p>Твоя</p>
-              </div>
-              {stories.map((story, i) => (
-                <div key={i} style={{ textAlign: 'center', marginRight: '20px' }}>
-                  <img src={avatar} style={{ width: '80px', height: '80px', borderRadius: '50%', border: '3px solid #00d4ff' }} />
-                  <p>{story}</p>
-                </div>
-              ))}
-            </div>
+      <header style={{ background: '#1a1a2e', padding: '20px', textAlign: 'center' }}>
+        <img src={avatar} alt="avatar" style={{ width: '100px', height: '100px', borderRadius: '50%', border: '4px solid #00d4ff' }} />
+        <h1 style={{ color: '#ffd700' }}>
+          {nickname} {currentUser.isFounder ? '👑' : ''}
+        </h1>
+        <p>{bio || 'Био пусто'}</p>
+        <h2 style={{ color: '#00d4ff' }}>Чат «Вся школа»</h2>
+      </header>
+      
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '20px',
+        background: '#14142a'
+      }}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{
+            padding: '15px',
+            background: msg.text.includes(currentUser.nickname) ? '#00d4ff' : '#2a2a40',
+            color: msg.text.includes(currentUser.nickname) ? 'black' : 'white',
+            borderRadius: '20px',
+            margin: '15px 0',
+            maxWidth: '70%',
+            alignSelf: msg.text.includes(currentUser.nickname) ? 'flex-end' : 'flex-start'
+          }}>
+            {msg.text}
           </div>
-          <div style={{ padding: '20px' }}>
-            <h2>Лента</h2>
-            <p style={{ textAlign: 'center', color: '#aaa' }}>Пока пусто</p>
-          </div>
-        </div>
-      )}
-
-      {tab === 'chats' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <h2 style={{ padding: '20px', background: '#1a1a2e', textAlign: 'center' }}>Чаты</h2>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', background: '#14142a' }}>
-            {messages.map((msg, i) => (
-              <div key={i} style={{
-                padding: '15px',
-                background: msg.includes(currentUser.nickname) ? '#00d4ff' : '#2a2a40',
-                color: msg.includes(currentUser.nickname) ? 'black' : 'white',
-                borderRadius: '20px',
-                margin: '15px 0',
-                maxWidth: '70%',
-                alignSelf: msg.includes(currentUser.nickname) ? 'flex-end' : 'flex-start'
-              }}>
-                {msg}
-              </div>
-            ))}
-          </div>
-          <div style={{ padding: '20px', background: '#1a1a2e', display: 'flex' }}>
-            <input placeholder="Сообщение..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && sendMessage()} style={{ flex: 1, padding: '18px', borderRadius: '25px', background: '#2a2a40', border: 'none', color: 'white' }} />
-            <button onClick={sendMessage} style={{ padding: '18px 35px', background: '#00d4ff', color: 'black', border: 'none', borderRadius: '25px', marginLeft: '15px' }}>
-              Отправить
-            </button>
-          </div>
-        </div>
-      )}
-
-      {tab === 'profile' && (
-        <div style={{ flex: 1, padding: '20px', textAlign: 'center' }}>
-          <img src={avatar} alt="avatar" style={{ width: '150px', height: '150px', borderRadius: '50%', border: '5px solid #00d4ff' }} />
-          <h1 style={{ color: '#ffd700' }}>
-            {nickname} {currentUser.isFounder ? '👑' : ''}
-          </h1>
-          <p>{bio || 'Био пусто'}</p>
-          <button onClick={() => {
-            const newNick = prompt('Новый ник', nickname);
-            if (newNick) setNickname(newNick);
-          }} style={{ padding: '15px', background: '#333', borderRadius: '10px', margin: '10px' }}>
-            Изменить ник
-          </button>
-          <button onClick={() => {
-            const newBio = prompt('Новое био', bio);
-            if (newBio !== null) setBio(newBio);
-          }} style={{ padding: '15px', background: '#333', borderRadius: '10px', margin: '10px' }}>
-            Изменить био
-          </button>
-          <label style={{ padding: '15px', background: '#333', borderRadius: '10px', margin: '10px', cursor: 'pointer' }}>
-            Изменить аватарку
-            <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
-          </label>
-        </div>
-      )}
-
-      <div style={{ background: '#1a1a2e', display: 'flex', justifyContent: 'space-around', padding: '15px' }}>
-        <button onClick={() => setTab('home')} style={{ background: 'none', border: 'none', color: tab === 'home' ? '#00d4ff' : '#aaa', fontSize: '2rem' }}>
-          🏠
-        </button>
-        <button onClick={() => setTab('chats')} style={{ background: 'none', border: 'none', color: tab === 'chats' ? '#00d4ff' : '#aaa', fontSize: '2rem' }}>
-          💬
-        </button>
-        <button onClick={() => setTab('profile')} style={{ background: 'none', border: 'none', color: tab === 'profile' ? '#00d4ff' : '#aaa', fontSize: '2rem' }}>
-          👤
+        ))}
+      </div>
+      
+      <div style={{ padding: '20px', background: '#1a1a2e', display: 'flex' }}>
+        <input placeholder="Напиши сообщение..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && sendMessage()} style={{ flex: 1, padding: '18px', borderRadius: '25px', background: '#2a2a40', border: 'none', color: 'white' }} />
+        <button onClick={sendMessage} style={{ padding: '18px 35px', background: '#00d4ff', color: 'black', border: 'none', borderRadius: '25px', marginLeft: '15px' }}>
+          Отправить
         </button>
       </div>
     </div>
