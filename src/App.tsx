@@ -15,22 +15,19 @@ interface Message {
 
 function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [name, setName] = useState('');
-  const [klass, setKlass] = useState('');
   const [nickname, setNickname] = useState('');
-  const [bio, setBio] = useState('');
   const [password, setPassword] = useState('');
   const [avatar, setAvatar] = useState('https://api.dicebear.com/7.x/avataaars/svg?seed=default');
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [selectedChat, setSelectedChat] = useState<string | null>(null);
-  const [users, setUsers] = useState<any[]>([]);
 
   // Загрузка профиля из localStorage
   useEffect(() => {
     const saved = localStorage.getItem('ushiniskyUser');
     if (saved) {
-      setCurrentUser(JSON.parse(saved));
+      const user = JSON.parse(saved);
+      setCurrentUser(user);
+      setAvatar(user.avatar || avatar);
     }
   }, []);
 
@@ -43,36 +40,19 @@ function App() {
     fetchMessages();
 
     // Реалтайм подписка
-    const subscription = supabase.channel('public:messages')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+    supabase.channel('public:messages')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
         fetchMessages();
       })
       .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, []);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setAvatar(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(e.target.files[0]);
-    }
-  };
-
-  const register = async () => {
+  const register = () => {
     if (nickname && password) {
       const isFounder = nickname.toLowerCase() === 'умар-99';
       const user = {
         nickname,
         password,
-        bio,
         avatar,
         isFounder
       };
@@ -82,13 +62,11 @@ function App() {
   };
 
   const login = () => {
-    // Пока локально, потом добавим проверку по базе
     if (nickname && password) {
       const isFounder = nickname.toLowerCase() === 'умар-99';
       const user = {
         nickname,
         password,
-        bio,
         avatar,
         isFounder
       };
@@ -138,44 +116,38 @@ function App() {
       height: '100vh',
       width: '100vw',
       display: 'flex',
+      flexDirection: 'column',
       fontFamily: 'Arial'
     }}>
-      <div style={{ width: '350px', background: '#90ee90', padding: '20px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <img src={avatar} alt="avatar" style={{ width: '120px', height: '120px', borderRadius: '50%', border: '5px solid #006400' }} />
-          <h2>{nickname} {currentUser.isFounder ? '👑' : ''}</h2>
-        </div>
-        <h3>Чаты</h3>
-        <p>Группы и личка скоро</p>
+      <header style={{ background: '#90ee90', padding: '20px', textAlign: 'center' }}>
+        <img src={avatar} alt="avatar" style={{ width: '100px', height: '100px', borderRadius: '50%', border: '4px solid #006400' }} />
+        <h1 style={{ color: '#006400' }}>
+          {nickname} {currentUser.isFounder ? ' 👑' : ''}
+        </h1>
+        <h2>Общий чат (онлайн)</h2>
+      </header>
+      
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{
+            padding: '15px',
+            background: msg.sender === currentUser.nickname ? '#006400' : '#90ee90',
+            color: msg.sender === currentUser.nickname ? 'white' : 'black',
+            borderRadius: '20px',
+            margin: '15px 0',
+            maxWidth: '70%',
+            alignSelf: msg.sender === currentUser.nickname ? 'flex-end' : 'flex-start'
+          }}>
+            {msg.text}
+          </div>
+        ))}
       </div>
       
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ background: '#90ee90', padding: '20px', textAlign: 'center' }}>
-          <h2>Общий чат (тест онлайн)</h2>
-        </header>
-        
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-          {messages.map((msg, i) => (
-            <div key={i} style={{
-              padding: '15px',
-              background: msg.sender === currentUser.nickname ? '#006400' : '#90ee90',
-              color: msg.sender === currentUser.nickname ? 'white' : 'black',
-              borderRadius: '20px',
-              margin: '15px 0',
-              maxWidth: '70%',
-              alignSelf: msg.sender === currentUser.nickname ? 'flex-end' : 'flex-start'
-            }}>
-              {msg.text}
-            </div>
-          ))}
-        </div>
-        
-        <div style={{ padding: '20px', background: '#90ee90', display: 'flex' }}>
-          <input placeholder="Сообщение..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && sendMessage()} style={{ flex: 1, padding: '18px', borderRadius: '25px', background: '#f5f5dc', border: 'none', color: 'black' }} />
-          <button onClick={sendMessage} style={{ padding: '18px 35px', background: '#006400', color: 'white', border: 'none', borderRadius: '25px', marginLeft: '15px' }}>
-            Отправить
-          </button>
-        </div>
+      <div style={{ padding: '20px', background: '#90ee90', display: 'flex' }}>
+        <input placeholder="Сообщение..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && sendMessage()} style={{ flex: 1, padding: '18px', borderRadius: '25px', background: '#f5f5dc', border: 'none', color: 'black' }} />
+        <button onClick={sendMessage} style={{ padding: '18px 35px', background: '#006400', color: 'white', border: 'none', borderRadius: '25px', marginLeft: '15px' }}>
+          Отправить
+        </button>
       </div>
     </div>
   );
