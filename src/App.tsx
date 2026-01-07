@@ -1,154 +1,194 @@
-import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://brmpknatwqbkpjgyhmxl.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJybXBrbmF0d3Fia3BqZ3lobXhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwNjQzNzAsImV4cCI6MjA4MjY0MDM3MH0.X_QZ4LMxIP1D7XqC_AoEjyKHFiCAJUT8QZrryd45hb0';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-interface Message {
-  id: number;
-  text: string;
-  sender: string;
-  created_at: string;
-}
+import React, { useState, useEffect } from 'react';
+import { Home, MessageCircle, User, Search, Settings, Moon, LogOut, X } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'; // Добавили инструменты Firebase
+import { db } from './firebase'; // Подключили твою базу
+import './App.css';
+import StoryBar from './components/StoryBar';
+import GeminiBot from './components/GeminiBot';
+import Login from './pages/Login';
+import ChatWindow from './components/ChatWindow';
+import CreatePostModal from './components/CreatePostModal';
 
 function App() {
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [nickname, setNickname] = useState('');
-  const [password, setPassword] = useState('');
-  const [avatar, setAvatar] = useState('https://api.dicebear.com/7.x/avataaars/svg?seed=default');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [darkMode, setDarkMode] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState('');
+  const [activeTab, setActiveTab] = useState('feed');
+  const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // СОСТОЯНИЯ ДЛЯ ДАННЫХ ИЗ FIREBASE
+  const [posts, setPosts] = useState<any[]>([]); // Посты теперь будут тут
+  const [realUsers, setRealUsers] = useState<any[]>([]); // Тут будут реальные ученики
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedChat, setSelectedChat] = useState<string | null>(null);
 
-  // Загрузка профиля из localStorage
+  // 1. ПОЛУЧАЕМ РЕАЛЬНЫХ ПОЛЬЗОВАТЕЛЕЙ ИЗ БАЗЫ
   useEffect(() => {
-    const saved = localStorage.getItem('ushiniskyUser');
-    if (saved) {
-      const user = JSON.parse(saved);
-      setCurrentUser(user);
-      setAvatar(user.avatar || avatar);
+    if (isLoggedIn) {
+      const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
+        const usersList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setRealUsers(usersList);
+      });
+      return () => unsubscribe();
     }
+  }, [isLoggedIn]);
+
+  // 2. ПОЛУЧАЕМ ПОСТЫ (ЗАГЛУШКА, ПОКА НЕ ПОДКЛЮЧИЛИ FIREBASE К ПОСТАМ)
+  useEffect(() => {
+    // В будущем тут будет код для загрузки постов из Firebase
+    setPosts([
+      { id: 1, author: 'Админ', text: 'База данных подключена! 🔥', likes: 15, image: '' },
+    ]);
   }, []);
 
-  // Загрузка сообщений из Supabase
-  useEffect(() => {
-    const fetchMessages = async () => {
-      const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true });
-      if (data) setMessages(data);
+  const handleLogin = (username: string) => {
+    setUser(username);
+    setIsLoggedIn(true);
+  };
+
+  const handleCreatePost = ({ text, image }: { text: string, image?: string }) => {
+    const newPost = {
+      id: Date.now(),
+      author: user,
+      text: text,
+      likes: 0,
+      image: image || ''
     };
-    fetchMessages();
-
-    // Реалтайм подписка
-    supabase.channel('public:messages')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
-        fetchMessages();
-      })
-      .subscribe();
-  }, []);
-
-  const register = () => {
-    if (nickname && password) {
-      const isFounder = nickname.toLowerCase() === 'умар-99';
-      const user = {
-        nickname,
-        password,
-        avatar,
-        isFounder
-      };
-      setCurrentUser(user);
-      localStorage.setItem('ushiniskyUser', JSON.stringify(user));
-    }
+    setPosts([newPost, ...posts]);
   };
 
-  const login = () => {
-    if (nickname && password) {
-      const isFounder = nickname.toLowerCase() === 'умар-99';
-      const user = {
-        nickname,
-        password,
-        avatar,
-        isFounder
-      };
-      setCurrentUser(user);
-      localStorage.setItem('ushiniskyUser', JSON.stringify(user));
-    }
-  };
+  // Фильтр по реальным пользователям из базы
+  const filteredStudents = realUsers.filter(s => 
+    (s.username || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const sendMessage = async () => {
-    if (newMessage.trim() && currentUser) {
-      const userTag = currentUser.nickname + (currentUser.isFounder ? ' 👑' : '');
-      await supabase.from('messages').insert({ text: userTag + ': ' + newMessage, sender: currentUser.nickname });
-      setNewMessage('');
-    }
-  };
-
-  if (!currentUser) {
-    return (
-      <div style={{
-        background: 'linear-gradient(135deg, #f5f5dc, #90ee90)',
-        color: 'black',
-        height: '100vh',
-        width: '100vw',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        fontFamily: 'Arial'
-      }}>
-        <h1 style={{ fontSize: '5rem', color: '#006400' }}>Ushinisky Live</h1>
-        <input placeholder="Никнейм (@umar-99)" value={nickname} onChange={(e) => setNickname(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', border: '2px solid #006400', background: '#f5f5dc', color: 'black' }} />
-        <input type="password" placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} style={{ padding: '18px', width: '380px', margin: '12px', borderRadius: '20px', border: '2px solid #006400', background: '#f5f5dc', color: 'black' }} />
-        <button onClick={login} style={{ padding: '25px 100px', background: '#90ee90', color: 'black', border: 'none', borderRadius: '30px' }}>
-          Войти
-        </button>
-        <button onClick={register} style={{ padding: '25px 100px', background: '#90ee90', color: 'black', border: 'none', borderRadius: '30px', marginTop: '20px' }}>
-          Регистрация
-        </button>
-      </div>
-    );
+  if (!isLoggedIn) {
+    return <Login onLogin={handleLogin} />;
   }
 
   return (
-    <div style={{
-      background: '#f5f5dc',
-      color: 'black',
-      height: '100vh',
-      width: '100vw',
-      display: 'flex',
-      flexDirection: 'column',
-      fontFamily: 'Arial'
-    }}>
-      <header style={{ background: '#90ee90', padding: '20px', textAlign: 'center' }}>
-        <img src={avatar} alt="avatar" style={{ width: '100px', height: '100px', borderRadius: '50%', border: '4px solid #006400' }} />
-        <h1 style={{ color: '#006400' }}>
-          {nickname} {currentUser.isFounder ? ' 👑' : ''}
-        </h1>
-        <h2>Общий чат (онлайн)</h2>
-      </header>
-      
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-        {messages.map((msg, i) => (
-          <div key={i} style={{
-            padding: '15px',
-            background: msg.sender === currentUser.nickname ? '#006400' : '#90ee90',
-            color: msg.sender === currentUser.nickname ? 'white' : 'black',
-            borderRadius: '20px',
-            margin: '15px 0',
-            maxWidth: '70%',
-            alignSelf: msg.sender === currentUser.nickname ? 'flex-end' : 'flex-start'
-          }}>
-            {msg.text}
+    <div className={`ul-app ${darkMode ? 'dark-mode' : ''}`}>
+      {/* Шапка */}
+      <header className="ul-header">
+        {!isSearchOpen ? (
+          <>
+            <div className="logo">UL</div>
+            <div className="app-title">Ushinskiy Live</div>
+            <div className="header-icons" onClick={() => setIsSearchOpen(true)}>
+              <Search size={22} style={{ cursor: 'pointer' }} />
+            </div>
+          </>
+        ) : (
+          <div className="search-bar-active">
+            <input 
+              autoFocus
+              placeholder="Поиск реальных учеников..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <X size={20} onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }} style={{cursor: 'pointer'}} />
           </div>
-        ))}
-      </div>
-      
-      <div style={{ padding: '20px', background: '#90ee90', display: 'flex' }}>
-        <input placeholder="Сообщение..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && sendMessage()} style={{ flex: 1, padding: '18px', borderRadius: '25px', background: '#f5f5dc', border: 'none', color: 'black' }} />
-        <button onClick={sendMessage} style={{ padding: '18px 35px', background: '#006400', color: 'white', border: 'none', borderRadius: '25px', marginLeft: '15px' }}>
-          Отправить
-        </button>
-      </div>
+        )}
+      </header>
+
+      <main className="ul-main">
+        {/* Вкладка: ГЛАВНАЯ */}
+        {activeTab === 'feed' && (
+          <div className="page feed-page">
+            <StoryBar />
+            <button className="btn-suggest" onClick={() => setIsCreatePostModalOpen(true)}>
+              Предложить новость
+            </button>
+            {posts.map(post => (
+              <div key={post.id} className="feed-card">
+                <div className="feed-header">
+                  <div className="admin-avatar">{post.author[0]}</div>
+                  <div>
+                    <p className="admin-name">{post.author}</p>
+                    <p className="feed-time">Только что</p>
+                  </div>
+                </div>
+                <div className="feed-content">
+                  <p>{post.text}</p>
+                  {post.image && <img src={post.image} alt="post" className="post-img" />}
+                </div>
+                <div className="feed-footer">
+                  <button className="like-btn">❤️ {post.likes}</button>
+                  <button className="comment-btn">💬 Комментировать</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Вкладка: ЧАТЫ (ТЕПЕРЬ ТУТ РЕАЛЬНЫЕ ЛЮДИ) */}
+        {activeTab === 'chat' && (
+          <div className="page chat-list">
+            <h2 style={{marginBottom: '15px'}}>Сообщения</h2>
+            {selectedChat && (
+              <ChatWindow contactName={selectedChat} onBack={() => setSelectedChat(null)} />
+            )}
+            
+            {filteredStudents.length > 0 ? filteredStudents.map((s) => (
+              <div key={s.id} className="chat-item" onClick={() => setSelectedChat(s.username)}>
+                <div className="chat-avatar">{s.username ? s.username[0].toUpperCase() : '?'}</div>
+                <div className="chat-info">
+                  <div className="chat-name">{s.username}</div>
+                  <div className="chat-last-msg">В сети</div>
+                </div>
+              </div>
+            )) : <p style={{textAlign: 'center', color: '#666'}}>Никто еще не зарегистрировался...</p>}
+          </div>
+        )}
+
+        {/* Вкладка: ПРОФИЛЬ */}
+        {activeTab === 'profile' && (
+          <div className="page profile-page">
+            <div className="profile-header">
+              <div className="admin-avatar-large">{user[0]?.toUpperCase()}</div>
+              <h2>{user}</h2>
+              <span className="badge-founder">Основатель</span>
+            </div>
+            <div className="profile-stats">
+              <div className="stat-card">
+                <span className="stat-num">{posts.filter(p => p.author === user).length}</span>
+                <span className="stat-label">Постов</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-num">🔥 10</span>
+                <span className="stat-label">Очков</span>
+              </div>
+            </div>
+            <div className="profile-menu">
+              <button className="menu-item"><Settings size={18} /> <span>Настройки</span></button>
+              <button className="menu-item" onClick={() => setDarkMode(!darkMode)}>
+                <Moon size={18} /> <span>{darkMode ? 'Светлая тема' : 'Тёмная тема'}</span>
+              </button>
+              <button onClick={() => setIsLoggedIn(false)} className="menu-item logout"><LogOut size={18} /> <span>Выйти</span></button>
+            </div>
+          </div>
+        )}
+      </main>
+
+      <GeminiBot />
+
+      {isCreatePostModalOpen && (
+        <CreatePostModal 
+          onClose={() => setIsCreatePostModalOpen(false)} 
+          onCreatePost={handleCreatePost} 
+        />
+      )}
+
+      {/* Навигация */}
+      <nav className="ul-navbar">
+        <button onClick={() => setActiveTab('feed')} className={activeTab === 'feed' ? 'nav-item active' : 'nav-item'}><Home /><span>Главная</span></button>
+        <button onClick={() => setActiveTab('chat')} className={activeTab === 'chat' ? 'nav-item active' : 'nav-item'}><MessageCircle /><span>Чаты</span></button>
+        <button onClick={() => setActiveTab('profile')} className={activeTab === 'profile' ? 'nav-item active' : 'nav-item'}><User /><span>Профиль</span></button>
+      </nav>
     </div>
   );
 }
