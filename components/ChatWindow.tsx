@@ -1,112 +1,144 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, ArrowLeft, MoreVertical } from 'lucide-react';
-import { db, auth } from '../firebase'; // Наша база и вход
+import { useState, useEffect, useRef } from 'react';
+import { db, auth } from '../firebase';
 import { 
   collection, 
   addDoc, 
   query, 
   orderBy, 
   onSnapshot, 
-  serverTimestamp 
+  serverTimestamp,
+  where,
+  or,
+  and
 } from 'firebase/firestore';
+import { Send, User, ArrowLeft } from 'lucide-react';
+
+interface Message {
+  id: string;
+  text: string;
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  createdAt: any;
+}
 
 interface ChatWindowProps {
   contactName: string;
+  contactId: string; // Добавили ID контакта для точности
   onBack: () => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ contactName, onBack }) => {
+export default function ChatWindow({ contactName, contactId, onBack }: ChatWindowProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [messages, setMessages] = useState<any[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const currentUser = auth.currentUser;
 
-  // 1. ПОЛУЧАЕМ СООБЩЕНИЯ В РЕАЛЬНОМ ВРЕМЕНИ
   useEffect(() => {
-    // Создаем запрос к папке "messages", сортируем по времени
-    const q = query(collection(db, "messages"), orderBy("createdAt", "asc"));
-    
+    if (!currentUser || !contactId) return;
+
+    // Сложный фильтр: (Я -> Тебе) ИЛИ (Ты -> Мне)
+    const q = query(
+      collection(db, "messages"),
+      or(
+        and(
+          where("senderId", "==", currentUser.uid),
+          where("recipientId", "==", contactId)
+        ),
+        and(
+          where("senderId", "==", contactId),
+          where("recipientId", "==", currentUser.uid)
+        )
+      ),
+      orderBy("createdAt", "asc")
+    );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      })) as Message[];
       setMessages(msgs);
       
-      // Прокрутка вниз при новом сообщении
       setTimeout(() => {
         scrollRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [contactId, currentUser]);
 
-  // 2. ОТПРАВКА СООБЩЕНИЯ В FIREBASE
-  const handleSendMessage = async () => {
-    if (!newMessage.trim()) return;
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !currentUser) return;
 
     try {
       await addDoc(collection(db, "messages"), {
         text: newMessage,
-        senderId: auth.currentUser?.uid, // ID того, кто пишет
-        senderName: auth.currentUser?.displayName || 'Аноним', 
-        recipientName: contactName, // Кому пишем
-        createdAt: serverTimestamp() // Точное время сервера
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || 'Аноним',
+        recipientId: contactId,
+        createdAt: serverTimestamp(),
       });
       setNewMessage('');
     } catch (error) {
-      console.error("Ошибка при отправке:", error);
+      console.error("Ошибка отправки:", error);
     }
   };
 
   return (
-    <div className="chat-window-overlay">
-      <div className="chat-window">
-        {/* Шапка чата */}
-        <div className="chat-header">
-          <div className="chat-header-left">
-            <button onClick={onBack} className="back-btn"><ArrowLeft size={24} /></button>
-            <div className="chat-avatar-small">{contactName[0]}</div>
-            <div className="chat-user-info">
-              <span className="chat-user-name">{contactName}</span>
-              <span className="chat-user-status">в сети</span>
+    <div className="flex flex-col h-full bg-white">
+      {/* Шапка чата */}
+      <div className="p-4 border-b flex items-center bg-white sticky top-0 z-10">
+        <button onClick={onBack} className="mr-4 p-1 hover:bg-gray-100 rounded-full">
+          <ArrowLeft size={24} />
+        </button>
+        <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
+          <User className="text-indigo-600" size={20} />
+        </div>
+        <h2 className="font-bold text-lg">{contactName}</h2>
+      </div>
+
+      {/* Список сообщений */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex ${msg.senderId === currentUser?.uid ? 'justify-end' : 'justify-start'}`}
+          >
+            <div
+              className={`max-w-[75%] p-3 rounded-2xl shadow-sm ${
+                msg.senderId === currentUser?.uid
+                  ? 'bg-indigo-600 text-white rounded-tr-none'
+                  : 'bg-white text-gray-800 rounded-tl-none border border-gray-200'
+              }`}
+            >
+              <p className="text-sm leading-relaxed">{msg.text}</p>
             </div>
           </div>
-          <MoreVertical size={20} color="#666" />
-        </div>
+        ))}
+        <div ref={scrollRef} />
+      </div>
 
-        {/* Поле с сообщениями */}
-        <div className="chat-messages">
-          {messages.map((msg) => (
-            <div 
-              key={msg.id} 
-              className={`message-bubble ${msg.senderId === auth.currentUser?.uid ? 'sent' : 'received'}`}
-            >
-              <p>{msg.text}</p>
-              <span className="message-time">
-                {msg.createdAt?.toDate() ? msg.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}
-              </span>
-            </div>
-          ))}
-          <div ref={scrollRef} /> 
-        </div>
-
-        {/* Ввод сообщения */}
-        <div className="chat-input-area">
-          <input 
-            type="text" 
-            placeholder="Сообщение..." 
+      {/* Поле ввода */}
+      <form onSubmit={sendMessage} className="p-4 border-t bg-white">
+        <div className="flex items-center gap-2 bg-gray-100 p-2 rounded-2xl">
+          <input
+            type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            placeholder="Написать сообщение..."
+            className="flex-1 bg-transparent border-none focus:outline-none px-2 py-1"
           />
-          <button className="send-btn" onClick={handleSendMessage}>
-            <Send size={20} color="white" />
+          <button
+            type="submit"
+            disabled={!newMessage.trim()}
+            className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            <Send size={20} />
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
-};
-
-export default ChatWindow;
+}
