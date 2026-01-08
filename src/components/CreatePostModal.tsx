@@ -1,51 +1,60 @@
-import React, { useState } from 'react';
-import { X, Camera, Image } from 'lucide-react';
+import { useState } from 'react';
+import { X, Image as ImageIcon } from 'lucide-react';
 
-const CreatePostModal = ({ onClose, onCreatePost }: { onClose: () => void, onCreatePost: (post: { text: string, image?: string }) => void }) => {
-  const [postText, setPostText] = useState('');
-  const [postImage, setPostImage] = useState(''); // Сюда будем сохранять URL картинки
+interface CreatePostModalProps {
+  onClose: () => void;
+  onCreatePost: (post: { text: string; image?: string }) => void;
+}
 
-  const handleSubmit = () => {
-    if (postText.trim() || postImage.trim()) {
-      onCreatePost({ text: postText, image: postImage });
-      onClose(); // Закрываем окно после создания поста
+export default function CreatePostModal({ onClose, onCreatePost }: CreatePostModalProps) {
+  const [text, setText] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (text.trim()) {
+      onCreatePost({ text, image: imageUrl });
+      onClose();
     }
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="create-post-modal">
-        <div className="modal-header">
-          <h3>Предложить новость</h3>
-          <X onClick={onClose} style={{cursor: 'pointer'}} />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="font-bold text-lg">Новый пост</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
+            <X size={20} />
+          </button>
         </div>
-        
-        <textarea 
-          placeholder="Что у тебя нового?"
-          value={postText}
-          onChange={(e) => setPostText(e.target.value)}
-        ></textarea>
-
-        {postImage && (
-          <div className="image-preview">
-            <img src={postImage} alt="Предпросмотр" />
-            <X size={20} className="remove-image" onClick={() => setPostImage('')} />
+        <form onSubmit={handleSubmit} className="p-4">
+          <textarea
+            className="w-full h-32 p-2 border rounded-xl resize-none focus:ring-2 focus:ring-indigo-500 outline-none"
+            placeholder="Что у вас нового?"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div className="mt-4">
+            <label className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+              <ImageIcon size={16} /> Ссылка на фото (необязательно)
+            </label>
+            <input
+              type="text"
+              className="w-full p-2 border rounded-lg text-sm"
+              placeholder="https://example.com/image.jpg"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+            />
           </div>
-        )}
-
-        <div className="modal-actions">
-          <button className="media-btn" onClick={() => setPostImage('https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=500&auto=format&fit=crop&q=60')}>
-            <Image size={20} /> Фото
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className="w-full mt-6 py-3 bg-indigo-600 text-white font-bold rounded-xl disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+          >
+            Опубликовать
           </button>
-          {/* Пока что видео будет подставлять то же фото */}
-          <button className="media-btn" onClick={() => setPostImage('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=500&auto=format&fit=crop&q=60')}>
-            <Camera size={20} /> Видео
-          </button>
-          <button className="post-submit-btn" onClick={handleSubmit}>Опубликовать</button>
-        </div>
+        </form>
       </div>
     </div>
   );
-};
-
-export default CreatePostModal;
+}
