@@ -1,29 +1,49 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, ArrowLeft, MoreVertical } from 'lucide-react';
-import { db, auth } from '../firebase'; // Наша база и вход
+import { db, auth } from '../firebase'; 
 import { 
   collection, 
   addDoc, 
   query, 
   orderBy, 
   onSnapshot, 
-  serverTimestamp 
+  serverTimestamp,
+  where,
+  or,
+  and
 } from 'firebase/firestore';
 
 interface ChatWindowProps {
   contactName: string;
+  contactId: string; // Добавили ID контакта
   onBack: () => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ contactName, onBack }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ contactName, contactId, onBack }) => {
   const [newMessage, setNewMessage] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const currentUser = auth.currentUser;
 
-  // 1. ПОЛУЧАЕМ СООБЩЕНИЯ В РЕАЛЬНОМ ВРЕМЕНИ
+  // 1. ПОЛУЧАЕМ СООБЩЕНИЯ С ФИЛЬТРОМ ПРИВАТНОСТИ
   useEffect(() => {
-    // Создаем запрос к папке "messages", сортируем по времени
-    const q = query(collection(db, "messages"), orderBy("createdAt", "asc"));
+    if (!currentUser || !contactId) return;
+
+    // Фильтр: (Я пишу тебе) ИЛИ (Ты пишешь мне)
+    const q = query(
+      collection(db, "messages"),
+      or(
+        and(
+          where("senderId", "==", currentUser.uid),
+          where("recipientId", "==", contactId)
+        ),
+        and(
+          where("senderId", "==", contactId),
+          where("recipientId", "==", currentUser.uid)
+        )
+      ),
+      orderBy("createdAt", "asc")
+    );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({
@@ -32,26 +52,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ contactName, onBack }) => {
       }));
       setMessages(msgs);
       
-      // Прокрутка вниз при новом сообщении
       setTimeout(() => {
         scrollRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [contactId, currentUser]);
 
-  // 2. ОТПРАВКА СООБЩЕНИЯ В FIREBASE
+  // 2. ОТПРАВКА СООБЩЕНИЯ
   const handleSendMessage = async () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !currentUser) return;
 
     try {
       await addDoc(collection(db, "messages"), {
         text: newMessage,
-        senderId: auth.currentUser?.uid, // ID того, кто пишет
-        senderName: auth.currentUser?.displayName || 'Аноним', 
-        recipientName: contactName, // Кому пишем
-        createdAt: serverTimestamp() // Точное время сервера
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || 'Пользователь', 
+        recipientId: contactId, // Теперь отправляем ID получателя
+        recipientName: contactName,
+        createdAt: serverTimestamp()
       });
       setNewMessage('');
     } catch (error) {
@@ -62,7 +82,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ contactName, onBack }) => {
   return (
     <div className="chat-window-overlay">
       <div className="chat-window">
-        {/* Шапка чата */}
         <div className="chat-header">
           <div className="chat-header-left">
             <button onClick={onBack} className="back-btn"><ArrowLeft size={24} /></button>
@@ -75,12 +94,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ contactName, onBack }) => {
           <MoreVertical size={20} color="#666" />
         </div>
 
-        {/* Поле с сообщениями */}
         <div className="chat-messages">
           {messages.map((msg) => (
             <div 
               key={msg.id} 
-              className={`message-bubble ${msg.senderId === auth.currentUser?.uid ? 'sent' : 'received'}`}
+              className={`message-bubble ${msg.senderId === currentUser?.uid ? 'sent' : 'received'}`}
             >
               <p>{msg.text}</p>
               <span className="message-time">
@@ -91,7 +109,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ contactName, onBack }) => {
           <div ref={scrollRef} /> 
         </div>
 
-        {/* Ввод сообщения */}
         <div className="chat-input-area">
           <input 
             type="text" 
